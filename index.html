@@ -406,7 +406,7 @@ function renderHistory(monthExp){
   const backupCard = `
     <div class="card">
       <h2>Backup</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;line-height:1.5;">Your data lives only on this device. Export a backup now and then, especially before switching phones or clearing browser storage.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;line-height:1.5;">A dated backup file saves automatically to your Downloads folder once a day, the first time you open the app. You can also grab one manually any time.</p>
       <button class="btn-secondary" id="exportBtn" style="margin-top:0;">Export backup (.json)</button>
       <button class="btn-secondary" id="importBtn">Restore from backup</button>
       <input type="file" id="importFile" accept="application/json" style="display:none;">
@@ -482,21 +482,39 @@ function escapeHtml(s){
 }
 
 /* ===================== Events ===================== */
+/* ===================== Backup ===================== */
+const LAST_BACKUP_KEY = 'masareef_last_backup_date';
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+
+function downloadBackupFile(silent){
+  const blob = new Blob([JSON.stringify(state.expenses, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = todayStr();
+  a.href = url; a.download = `masareef-backup-${stamp}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  if(silent){
+    localStorage.setItem(LAST_BACKUP_KEY, stamp);
+    showToast('Daily backup saved to Downloads');
+  }else{
+    showToast('Backup downloaded');
+  }
+}
+
+function maybeAutoBackup(){
+  if(state.expenses.length === 0) return;
+  const last = localStorage.getItem(LAST_BACKUP_KEY);
+  if(last === todayStr()) return;
+  downloadBackupFile(true);
+}
+
 function attachHistoryEvents(){
   attachRowEvents();
   const exportBtn = document.getElementById('exportBtn');
   const importBtn = document.getElementById('importBtn');
   const importFile = document.getElementById('importFile');
-  if(exportBtn) exportBtn.onclick = () => {
-    const blob = new Blob([JSON.stringify(state.expenses, null, 2)], {type:'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const stamp = new Date().toISOString().slice(0,10);
-    a.href = url; a.download = `masareef-backup-${stamp}.json`;
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-    showToast('Backup downloaded');
-  };
+  if(exportBtn) exportBtn.onclick = () => downloadBackupFile(false);
   if(importBtn) importBtn.onclick = () => importFile.click();
   if(importFile) importFile.onchange = (ev) => {
     const file = ev.target.files[0];
@@ -582,6 +600,7 @@ document.getElementById('navAdd').onclick = () => { state.editingId=null; state.
 (async function init(){
   state.expenses = await loadExpenses();
   render();
+  maybeAutoBackup();
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
   }
